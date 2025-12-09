@@ -1,0 +1,121 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Банк "Стандарт" - Диаграмма контейнеров C4 (TO BE) - Кредиты
+
+Person(client, "Клиент банка", "Физическое лицо, подающее заявку на кредит")
+Person(new_client, "Новый клиент", "Потенциальный клиент, подающий заявку через сайт")
+Person(front_office, "Менеджер фронт-офиса", "Сотрудник отделения, оформляет кредиты")
+Person(back_office_credit, "Менеджер бэк-офиса кредитов", "Обрабатывает заявки на кредиты")
+
+' ===== Интернет-банк (с новым микросервисом кредитов) =====
+System_Boundary(InternetBankSystem, "Интернет-банк") {
+  Container(ib_web, "Веб-приложение ИБ", "ASP.NET MVC 4.5", "Веб-интерфейс для клиентов: платежи, счета, заявки на кредиты")
+  ContainerDb(ib_db, "БД Интернет-банка", "MS SQL", "Данные клиентов, сессии")
+  
+  Container(credit_api, "API Кредитов", ".NET Core", "Микросервис для работы с кредитами: условия, заявки, статусы, предодобренные предложения")
+  ContainerDb(credit_db, "БД Кредитов", "PostgreSQL", "Заявки на кредиты, условия кредитования, статусы, результаты скоринга")
+  Container(credit_worker, "Обработчик заявок на кредиты", ".NET Core", "Публикует/читает события из Kafka, отправляет СМС-уведомления")
+  Container(credit_batch, "Batch Job предрасчёта скорингов", ".NET Core", "Выполняет предрасчёты скорингов в ночное время для предодобренных предложений")
+}
+
+' ===== Kafka =====
+Container(kafka, "Apache Kafka", "Kafka", "Брокер сообщений для асинхронного обмена между системами")
+
+' ===== Адаптеры =====
+System_Boundary(AdapterSystem, "Адаптеры") {
+  Container(abs_adapter, "Адаптер АБС", "Java Spring Boot", "Читает изменения из Oracle, публикует в Kafka. Читает из Kafka, пишет в Oracle")
+  Container(credit_pipeline_adapter, "Адаптер Кредитного конвейера", "Java Spring Boot", "Читает заявки из Kafka, вызывает API Кредитного конвейера, публикует результаты обратно в Kafka")
+}
+
+' ===== Сайт банка =====
+System_Boundary(WebsiteSystem, "Сайт банка") {
+  Container(website_frontend, "Фронтенд сайта", "React.js", "Маркетинговый сайт, форма подачи заявок на кредиты")
+  Container(website_backend, "Бэкенд сайта", "PHP", "Обработка заявок на кредиты, интеграция с API Кредитов")
+}
+
+' ===== АБС =====
+System_Boundary(ABSSystem, "АБС") {
+  Container(abs_client, "Клиент АБС", "Delphi", "Десктопное приложение для сотрудников")
+  ContainerDb(abs_db, "БД АБС", "Oracle", "Счета, кредиты, клиенты, транзакции")
+  Container(abs_logic, "Бизнес-логика АБС", "PL-SQL", "Процедуры обработки операций")
+}
+
+' ===== Кредитный конвейер =====
+System_Boundary(CreditPipelineSystem, "Кредитный конвейер") {
+  Container(cp_api, "API Кредитного конвейера", "Java/другое", "REST API для получения условий кредитования, управления заявками")
+  ContainerDb(cp_db, "БД Кредитного конвейера", "БД", "Условия кредитования, лимиты, заявки")
+}
+
+' ===== Система скоринга =====
+System_Boundary(ScoringSystem, "Система скоринга") {
+  Container(scoring_api, "API Скоринга", "Технология системы", "REST API для оценки кредитоспособности клиентов")
+  Container(scoring_logic, "Логика скоринга", "Скоринговые модели", "Оценка клиентов, интеграция с БКИ")
+  ContainerDb(scoring_db, "БД Скоринга", "БД", "История скорингов, модели")
+}
+
+' ===== СМС-шлюз =====
+Container(sms_gateway, "СМС-шлюз", "Внутренняя разработка", "Отправка СМС-уведомлений и кодов подтверждения")
+
+' ===== Внешние системы =====
+System_Ext(bki, "БКИ (Бюро кредитных историй)", "Внешняя система для получения кредитных историй")
+System_Ext(telecom, "Телеком-оператор", "Внешний оператор для отправки СМС")
+
+' ===== Связи клиентов =====
+Rel(new_client, website_frontend, "Подаёт заявку на кредит, просматривает условия", "HTTPS")
+Rel(client, ib_web, "Подаёт заявки на кредиты, видит предодобренные предложения", "HTTPS")
+Rel(client, front_office, "Приходит в отделение для оформления")
+
+' ===== Связи сотрудников =====
+Rel(front_office, abs_client, "Оформляет кредиты, продолжает работу с предодобренными заявками")
+Rel(back_office_credit, abs_client, "Обрабатывает заявки на кредиты")
+Rel(back_office_credit, cp_api, "Получает информацию об условиях кредитования")
+
+' ===== Внутренние связи Интернет-банка =====
+Rel(ib_web, ib_db, "Читает/записывает данные", "SQL")
+Rel(ib_web, credit_api, "Получает условия кредитов, предодобренные предложения, создаёт заявки", "REST API")
+Rel(ib_web, sms_gateway, "Запрашивает СМС-коды для подтверждения заявок", "API")
+
+Rel(credit_api, credit_db, "Читает/записывает заявки, условия, статусы", "SQL")
+Rel(credit_api, scoring_api, "Запрашивает скоринг клиентов (синхронно)", "REST API")
+Rel(credit_worker, credit_db, "Читает/записывает заявки, обновляет статусы", "SQL")
+Rel(credit_worker, sms_gateway, "Отправляет СМС-уведомления об изменении статуса", "API")
+Rel(credit_batch, credit_db, "Читает данные клиентов, записывает предрасчёты скорингов", "SQL")
+Rel(credit_batch, scoring_api, "Запрашивает предрасчёты скорингов (ночное время)", "REST API")
+
+' ===== Внутренние связи Сайта =====
+Rel(website_frontend, website_backend, "API запросы", "REST/JSON")
+Rel(website_backend, credit_api, "Создаёт заявки на кредиты", "REST API")
+
+' ===== Внутренние связи АБС =====
+Rel(abs_client, abs_db, "Читает/записывает", "Oracle Net")
+Rel(abs_logic, abs_db, "Выполняет процедуры", "PL-SQL")
+
+' ===== Внутренние связи Кредитного конвейера =====
+Rel(cp_api, cp_db, "Читает/записывает условия кредитования, заявки", "SQL")
+
+' ===== Внутренние связи Системы скоринга =====
+Rel(scoring_api, scoring_logic, "Вызывает скоринговые модели")
+Rel(scoring_logic, scoring_db, "Читает/записывает результаты скорингов", "SQL")
+Rel(scoring_logic, bki, "Получает кредитные истории клиентов", "REST API")
+
+' ===== Интеграция через Kafka (+R3, +R6, +R9) =====
+' Сервис кредитов <-> Kafka
+Rel(credit_worker, kafka, "Публикует: CreditApplicationCreated\nЧитает: CreditTermsUpdated, CreditStatusChanged", "Kafka")
+
+' Адаптер Кредитного конвейера <-> Kafka
+Rel(credit_pipeline_adapter, kafka, "Публикует: CreditTermsUpdated\nЧитает: CreditApplicationCreated", "Kafka")
+Rel(credit_pipeline_adapter, cp_api, "Получает условия кредитования", "REST API")
+
+' Адаптер АБС <-> Kafka
+Rel(abs_adapter, kafka, "Публикует: CreditStatusChanged\nЧитает: CreditApplicationCreated", "Kafka")
+Rel(abs_adapter, abs_db, "Polling изменений, запись заявок", "JDBC/Oracle")
+
+' ===== СМС =====
+Rel(abs_logic, sms_gateway, "Запрашивает СМС-уведомления", "API")
+Rel(sms_gateway, telecom, "Отправляет СМС", "API")
+
+SHOW_LEGEND()
+
+@enduml
+
