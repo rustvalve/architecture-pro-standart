@@ -1,0 +1,86 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Банк "Стандарт" - Диаграмма контейнеров C4 - Доступ к ставкам депозитов
+
+Person(client, "Клиент банка", "Звонит в кол-центр")
+Person(back_office_deposit, "Менеджер бэк-офиса депозитов", "Обновляет ставки")
+Person(call_center_operator, "Оператор кол-центра", "Консультирует клиентов")
+Person(partner_operator, "Оператор партнёрского кол-центра", "Работает в партнёрской системе")
+
+' ===== Интернет-банк (фрагмент, существующая архитектура) =====
+System_Boundary(InternetBankSystem, "Интернет-банк") {
+  Container(deposit_api, "API Депозитов", ".NET Core", "API для работы с депозитами и ставками")
+  ContainerDb(deposit_db, "БД Депозитов", "PostgreSQL", "Заявки, ставки, статусы")
+  Container(deposit_worker, "Обработчик заявок", ".NET Core", "Читает события из Kafka")
+}
+
+' ===== Kafka =====
+Container(kafka, "Apache Kafka", "Kafka", "Брокер сообщений для асинхронного обмена")
+
+' ===== Адаптер АБС =====
+System_Boundary(ABSAdapterSystem, "Адаптер АБС") {
+  Container(abs_adapter, "АБС Adapter", "Java Spring Boot", "Читает изменения из Oracle, публикует в Kafka")
+}
+
+' ===== АБС =====
+System_Boundary(ABSSystem, "АБС") {
+  Container(abs_client, "Клиент АБС", "Delphi", "Десктопное приложение для сотрудников")
+  ContainerDb(abs_db, "БД АБС", "Oracle", "Счета, депозиты, ставки, транзакции")
+}
+
+' ===== Система кол-центра =====
+System_Boundary(CallCenterSystem, "Система кол-центра") {
+  Container(cc_web, "Веб-интерфейс кол-центра", "React.js", "Интерфейс для операторов, отображение ставок")
+  Container(cc_backend, "Бэкенд кол-центра", "Java Spring Boot", "Обработка обращений, получение ставок")
+  ContainerDb(cc_db, "БД кол-центра", "PostgreSQL", "Обращения клиентов, история звонков")
+}
+
+' ===== Сервис экспорта ставок (новый) =====
+System_Boundary(RateExportSystem, "Сервис экспорта ставок (новый)") {
+  Container(rate_export, "Rate Export Service", ".NET Core / Python", "Генерирует файлы со ставками по расписанию")
+}
+
+' ===== SFTP-сервер =====
+Container(sftp_server, "SFTP-сервер", "OpenSSH", "Сервер для передачи файлов партнёрам")
+
+' ===== Внешние системы =====
+System_Ext(partner_call_center, "Партнёрский кол-центр", "Внешняя система партнёра")
+
+' ===== Связи клиентов =====
+Rel(client, call_center_operator, "Звонит с вопросом о депозитах")
+Rel(client, partner_operator, "Звонит в партнёрский кол-центр")
+
+' ===== Связи сотрудников =====
+Rel(back_office_deposit, abs_client, "Обновляет ставки по депозитам")
+Rel(call_center_operator, cc_web, "Просматривает актуальные ставки")
+Rel(partner_operator, partner_call_center, "Консультирует клиентов")
+
+' ===== Внутренние связи АБС =====
+Rel(abs_client, abs_db, "Читает/записывает", "Oracle Net")
+
+' ===== Внутренние связи Кол-центра =====
+Rel(cc_web, cc_backend, "API запросы", "REST/JSON")
+Rel(cc_backend, cc_db, "Читает/записывает", "SQL")
+
+' ===== Интеграция через Kafka =====
+Rel(abs_adapter, abs_db, "Polling изменений ставок", "JDBC/Oracle")
+Rel(abs_adapter, kafka, "Публикует: DepositRateUpdated", "Kafka")
+Rel(deposit_worker, kafka, "Читает: DepositRateUpdated", "Kafka")
+Rel(deposit_worker, deposit_db, "Обновляет ставки", "SQL")
+
+' ===== API Депозитов -> Кол-центр =====
+Rel(cc_backend, deposit_api, "Запрашивает актуальные ставки", "GET /api/rates")
+Rel(deposit_api, deposit_db, "Читает ставки", "SQL")
+
+' ===== Сервис экспорта -> SFTP =====
+Rel(rate_export, deposit_db, "Читает актуальные ставки", "SQL")
+Rel(rate_export, sftp_server, "Загружает файл rates.csv", "SFTP")
+
+' ===== Партнёр -> SFTP =====
+Rel(partner_call_center, sftp_server, "Скачивает rates.csv ежедневно", "SFTP")
+
+SHOW_LEGEND()
+
+@enduml
+

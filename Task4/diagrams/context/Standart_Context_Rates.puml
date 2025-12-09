@@ -1,0 +1,47 @@
+@startuml
+title Банк "Стандарт" - Диаграмма контекста C4 - Доступ к ставкам депозитов
+
+top to bottom direction
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+' ===== Пользователи (Actors) =====
+Person(client, "Клиент банка", "Звонит в кол-центр для консультации по депозитам")
+Person(back_office_deposit, "Менеджер бэк-офиса депозитов", "Обновляет ставки по депозитам в АБС")
+Person(call_center_operator, "Оператор кол-центра", "Консультирует клиентов по ставкам депозитов")
+Person(partner_operator, "Оператор партнёрского кол-центра", "Консультирует клиентов партнёра")
+
+' ===== Система банка =====
+System_Boundary(BankSystem, "Банк Стандарт") {
+  System(deposit_service, "Сервис депозитов", "Хранит и предоставляет актуальные ставки депозитов")
+  System(call_center, "Система кол-центра", "CRM-система для обработки обращений клиентов")
+  System(abs, "АБС", "Основная банковская система, источник правды для ставок")
+  System(rate_export, "Сервис экспорта ставок", "Генерирует файлы со ставками для партнёров")
+  System(sftp_server, "SFTP-сервер", "Сервер для передачи файлов партнёрам")
+}
+
+' ===== Внешние системы =====
+System_Ext(partner_call_center, "Партнёрский кол-центр", "Внешняя система партнёра для обработки звонков")
+
+' ===== Связи клиентов =====
+Rel(client, call_center_operator, "Звонит с вопросом о депозитах")
+Rel(client, partner_operator, "Звонит в партнёрский кол-центр")
+
+' ===== Связи сотрудников =====
+Rel(back_office_deposit, abs, "Обновляет ставки по депозитам")
+Rel(call_center_operator, call_center, "Просматривает актуальные ставки")
+Rel(partner_operator, partner_call_center, "Работает в партнёрской системе")
+
+' ===== Связи между системами =====
+Rel(abs, deposit_service, "Публикует обновления ставок", "Kafka")
+Rel(call_center, deposit_service, "Запрашивает актуальные ставки", "REST API")
+Rel(rate_export, deposit_service, "Читает актуальные ставки", "SQL")
+Rel(rate_export, sftp_server, "Загружает файл со ставками", "SFTP")
+Rel(partner_call_center, sftp_server, "Скачивает файл со ставками", "SFTP")
+
+SHOW_LEGEND()
+
+@enduml
+

@@ -1,0 +1,51 @@
+@startuml
+title Банк "Стандарт" - Диаграмма контекста C4 (TO BE) - Депозиты
+
+top to bottom direction
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+' ===== Пользователи (Actors) =====
+Person(client, "Клиент банка", "Физическое лицо, использующее услуги банка для открытия депозитов")
+Person(new_client, "Новый клиент", "Потенциальный клиент, подающий заявку через сайт")
+
+' ===== Внутренние системы банка =====
+System_Boundary(BankSystem, "Банк Стандарт") {
+  Person(front_office, "Менеджер фронт-офиса", "Сотрудник отделения, работающий с клиентами напрямую")
+  Person(back_office_deposit, "Менеджер бэк-офиса депозитов", "Сотрудник, обрабатывающий заявки на депозиты")
+  Person(call_center_operator, "Оператор кол-центра", "Сотрудник, консультирующий клиентов по телефону")
+
+  System(internet_bank, "Интернет-банк", "Веб-приложение для клиентов: проведение платежей, открытие счетов, подача заявок на депозиты. ASP.NET MVC 4.5, MS SQL")
+  System(website, "Сайт банка", "Маркетинговый сайт с возможностью подачи заявок на депозиты. PHP, React.js")
+  System(abs, "АБС", "Автоматизированная банковская система: учёт операций по счетам, бухгалтерия, обработка заявок. Delphi, Oracle, PL-SQL")
+  System(call_center, "Система кол-центра", "CRM-система для обработки обращений клиентов. React.js, Java Spring Boot, PostgreSQL")
+  System(sms_gateway, "СМС-шлюз", "Отправка СМС-уведомлений клиентам")
+}
+
+' ===== Внешние системы =====
+System_Ext(telecom, "Телеком-оператор", "Внешний оператор для отправки СМС")
+System_Ext(partner_call_center, "Партнёрский кол-центр", "Внешний кол-центр для обработки звонков по скриптам")
+
+' ===== Связи клиентов с системами =====
+Rel(new_client, website, "Подаёт заявку на депозит, просматривает условия", "HTTPS")
+Rel(client, internet_bank, "Открывает депозиты, проводит платежи", "HTTPS")
+Rel(client, call_center_operator, "Звонит для консультации")
+Rel(client, front_office, "Приходит в отделение для идентификации и оформления")
+
+' ===== Связи сотрудников с системами =====
+Rel(front_office, abs, "Создаёт заявки, оформляет депозиты")
+Rel(back_office_deposit, abs, "Обрабатывает заявки на депозиты, определяет ставки")
+Rel(call_center_operator, call_center, "Регистрирует обращения, консультирует клиентов")
+
+' ===== Связи между системами =====
+Rel(website, call_center, "Передаёт заявки на депозиты", "API")
+Rel(website, partner_call_center, "Передаёт заявки на депозиты", "API")
+Rel(internet_bank, abs, "Получает данные о счетах, ставках; создаёт заявки", "DB/API")
+Rel(internet_bank, sms_gateway, "Запрашивает отправку СМС-кодов и уведомлений", "API")
+Rel(call_center, abs, "Передаёт обращения клиентов", "API")
+Rel(abs, sms_gateway, "Запрашивает отправку СМС-уведомлений", "API")
+Rel(sms_gateway, telecom, "Отправляет СМС", "API")
+
+@enduml

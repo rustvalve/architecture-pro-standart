@@ -1,0 +1,112 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Банк "Стандарт" - Диаграмма контейнеров C4 (TO BE) - Депозиты
+
+Person(client, "Клиент банка", "Физическое лицо, открывающее депозиты")
+Person(new_client, "Новый клиент", "Потенциальный клиент, подающий заявку через сайт")
+Person(front_office, "Менеджер фронт-офиса", "Сотрудник отделения")
+Person(back_office_deposit, "Менеджер бэк-офиса депозитов", "Обрабатывает заявки на депозиты")
+Person(call_center_operator, "Оператор кол-центра", "Консультирует клиентов")
+
+' ===== Интернет-банк (с новым микросервисом депозитов) =====
+System_Boundary(InternetBankSystem, "Интернет-банк") {
+  Container(ib_web, "Веб-приложение ИБ", "ASP.NET MVC 4.5", "Веб-интерфейс для клиентов: платежи, счета, заявки на депозиты")
+  ContainerDb(ib_db, "БД Интернет-банка", "MS SQL", "Данные клиентов, сессии")
+  
+  Container(deposit_api, "API Депозитов", ".NET Core", "Микросервис для работы с депозитами: ставки, заявки, статусы")
+  ContainerDb(deposit_db, "БД Депозитов", "MS SQL", "Заявки на депозиты, ставки, статусы")
+  Container(deposit_worker, "Обработчик заявок", ".NET Core", "Публикует/читает события из Kafka")
+}
+
+' ===== Kafka =====
+Container(kafka, "Apache Kafka", "Kafka", "Брокер сообщений для асинхронного обмена между системами")
+
+' ===== Адаптер АБС =====
+System_Boundary(ABSAdapterSystem, "Адаптер АБС") {
+  Container(abs_adapter, "АБС Adapter", "Java Spring Boot", "Читает изменения из Oracle, публикует в Kafka. Читает из Kafka, пишет в Oracle")
+}
+
+' ===== Сайт банка =====
+System_Boundary(WebsiteSystem, "Сайт банка") {
+  Container(website_frontend, "Фронтенд сайта", "React.js", "Маркетинговый сайт, форма подачи заявок на депозиты")
+  Container(website_backend, "Бэкенд сайта", "PHP", "Обработка заявок, интеграция с кол-центром")
+}
+
+' ===== АБС =====
+System_Boundary(ABSSystem, "АБС") {
+  Container(abs_client, "Клиент АБС", "Delphi", "Десктопное приложение для сотрудников")
+  ContainerDb(abs_db, "БД АБС", "Oracle", "Счета, депозиты, клиенты, транзакции")
+  Container(abs_logic, "Бизнес-логика АБС", "PL-SQL", "Процедуры обработки операций")
+}
+
+' ===== Система кол-центра =====
+System_Boundary(CallCenterSystem, "Система кол-центра") {
+  Container(cc_web, "Веб-интерфейс кол-центра", "React.js", "Интерфейс для операторов")
+  Container(cc_backend, "Бэкенд кол-центра", "Java Spring Boot", "Обработка обращений, интеграция с АБС")
+  ContainerDb(cc_db, "БД кол-центра", "PostgreSQL", "Обращения клиентов, история звонков")
+}
+
+' ===== СМС-шлюз =====
+Container(sms_gateway, "СМС-шлюз", "Внутренняя разработка", "Отправка СМС-уведомлений и кодов подтверждения")
+
+' ===== Внешние системы =====
+System_Ext(telecom, "Телеком-оператор", "Внешний оператор для отправки СМС")
+System_Ext(partner_call_center, "Партнёрский кол-центр", "Внешний кол-центр для обработки звонков")
+
+' ===== Связи клиентов =====
+Rel(new_client, website_frontend, "Подаёт заявку на депозит", "HTTPS")
+Rel(client, ib_web, "Открывает депозиты, проводит платежи", "HTTPS")
+Rel(client, call_center_operator, "Звонит для консультации")
+Rel(client, front_office, "Приходит в отделение")
+
+' ===== Связи сотрудников =====
+Rel(front_office, abs_client, "Оформляет депозиты")
+Rel(back_office_deposit, abs_client, "Обрабатывает заявки, определяет ставки")
+Rel(call_center_operator, cc_web, "Регистрирует обращения")
+
+' ===== Внутренние связи Интернет-банка =====
+Rel(ib_web, ib_db, "Читает/записывает данные", "SQL")
+Rel(ib_web, deposit_api, "Получает ставки, создаёт заявки на депозиты", "REST API")
+Rel(deposit_api, deposit_db, "Читает/записывает", "SQL")
+Rel(deposit_worker, deposit_db, "Читает/записывает заявки", "SQL")
+
+' ===== Внутренние связи Сайта =====
+Rel(website_frontend, website_backend, "API запросы", "REST/JSON")
+
+' ===== Внутренние связи АБС =====
+Rel(abs_client, abs_db, "Читает/записывает", "Oracle Net")
+Rel(abs_logic, abs_db, "Выполняет процедуры", "PL-SQL")
+
+' ===== Внутренние связи Кол-центра =====
+Rel(cc_web, cc_backend, "API запросы", "REST/JSON")
+Rel(cc_backend, cc_db, "Читает/записывает", "SQL")
+
+' ===== Интеграция через Kafka (+R3, +R6) =====
+' Сервис депозитов <-> Kafka
+Rel(deposit_worker, kafka, "Публикует: DepositApplicationCreated\nЧитает: DepositRateUpdated, DepositStatusChanged", "Kafka")
+
+' Адаптер АБС <-> Kafka
+Rel(abs_adapter, kafka, "Публикует: DepositRateUpdated, DepositStatusChanged\nЧитает: DepositApplicationCreated", "Kafka")
+
+' Адаптер АБС <-> БД АБС
+Rel(abs_adapter, abs_db, "Polling изменений, запись заявок", "JDBC/Oracle")
+
+' ===== СМС =====
+Rel(ib_web, sms_gateway, "Запрашивает СМС-коды", "API")
+Rel(deposit_api, sms_gateway, "Запрашивает СМС-уведомления", "API")
+
+' Сайт -> Кол-центр
+Rel(website_backend, cc_backend, "Передаёт заявки на депозиты", "REST API")
+Rel(website_backend, partner_call_center, "Передаёт заявки", "API")
+
+' Кол-центр -> Kafka (на перспективу можно тоже через Kafka)
+Rel(cc_backend, abs_db, "Передаёт обращения, получает данные клиентов", "JDBC/Oracle")
+
+' АБС -> СМС
+Rel(abs_logic, sms_gateway, "Запрашивает СМС-уведомления", "API")
+Rel(sms_gateway, telecom, "Отправляет СМС", "API")
+
+SHOW_LEGEND()
+
+@enduml
